@@ -44,6 +44,35 @@ func New(endpoints []string, accessKey, secretKey string, secure bool, healthChe
 	}, nil
 }
 
+func NewWithRegion(endpoints []string, accessKey, secretKey string, secure bool, healthCheckDuration time.Duration, region string) (*LoadBalancer, error) {
+	var clients []*minio.Client
+	failures := make([]time.Time, len(endpoints))
+
+	for i, endpoint := range endpoints {
+		client, err := minio.New(endpoint, &minio.Options{
+			Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
+			Secure: secure,
+			Region: region,
+		})
+		if err != nil {
+			return nil, err
+		}
+		_, err = client.HealthCheck(healthCheckDuration)
+		if err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
+
+		failures[i] = time.Time{}
+	}
+
+	return &LoadBalancer{
+		clients:      clients,
+		failures:     failures,
+		currentIndex: 0,
+	}, nil
+}
+
 func (lb *LoadBalancer) Get() (int, *minio.Client, error) {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
